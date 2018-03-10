@@ -30,7 +30,8 @@ typedef number<cpp_int_backend< LARGE_BITS, LARGE_BITS, unsigned_magnitude, chec
 class generate_hash {
 
  public:
-   u_int64_t n_kmer; //the number of k-mers
+	// TORI
+   u_int64_t n_kmer_orig; //the number of k-mers not considering deletions/insertions
    unsigned k_kmer; //the lengths of the k-mers (max 32)
 
    /* 
@@ -45,6 +46,11 @@ class generate_hash {
    //image of k-mers through Karp-Rabin hash function
    //discarded after use
    std::unordered_set<u_int64_t> KRHash; 
+
+	// A map of kmers to their hash values for newly added
+	// nodes. A hack until we have a dynamic hash function
+	// implementation
+	std::map<kmer_t, u_int64_t> new_nodes; 
    
    boophf_t* bphf; //MPHF we will generate
 
@@ -54,8 +60,10 @@ class generate_hash {
 
    const static short sigma = 4; // alphabet size
 
+
+	// TORITODO	
    void save( ostream& of ) {
-     of.write ( (char*) &n_kmer, sizeof( u_int64_t ) );
+     of.write ( (char*) &n_kmer_orig, sizeof( u_int64_t ) );
      of.write ( (char*) &k_kmer, sizeof( unsigned ) );
      of.write ( (char*) &r, sizeof( u_int64_t ) );
      of.write ( (char*) &rinv, sizeof( u_int64_t ) );
@@ -65,9 +73,9 @@ class generate_hash {
      bphf->save( of );
    }
 
-
+	// TORITODO
    void load( istream& of ) {
-     of.read ( (char*) &n_kmer, sizeof( u_int64_t ) );
+     of.read ( (char*) &n_kmer_orig, sizeof( u_int64_t ) );
      of.read ( (char*) &k_kmer, sizeof( unsigned ) );
      of.read ( (char*) &r, sizeof( u_int64_t ) );
      of.read ( (char*) &rinv, sizeof( u_int64_t ) );
@@ -104,7 +112,7 @@ class generate_hash {
    }
 
    void construct_hash_function( unordered_set< kmer_t >& kmers , u_int64_t n , unsigned k ) {
-      this->n_kmer = n; // number of k-mers
+      this->n_kmer_orig = n; // number of k-mers
       this->k_kmer = k; // length of each k-mer
 
       BOOST_LOG_TRIVIAL(info) << "Constructing the hash function ...";
@@ -168,15 +176,68 @@ class generate_hash {
       BOOST_LOG_TRIVIAL( info ) << "Powers of r modulo p are computed correctly.";
    }
 
+	/**
+	 * Add a node to the hash function
+	 * HACK: For now, we keep the new node in a map from kmer to its hash val
+	 * Don't actually have a dynamic hash function
+	 * Returns new hash value
+	 */
+	u_int64_t add_node(const kmer_t& new_kmer)
+	{
+		assert(this->new_nodes.find(new_kmer) == this->new_nodes.end());
+
+		// Add it to the new nodes map with the next available hash value
+		u_int64_t new_hash = this->n_kmer_orig + this->new_nodes.size();
+		//this->new_nodes.insert(std::pair<kmer_t, u_int64_t>(new_kmer, new_hash));
+		this->new_nodes[new_hash] = new_kmer;
+		return new_hash;
+	}
+
+	/**
+	 * Checks whether this kmer has been stored as one of the new nodes
+	 * And returns the hash if it has
+	 * o/w returns -1
+	 */
+	u_int64_t new_node_hash(const kmer_t& kmer) {
+
+		map<kmer_t, u_int64_t>::iterator found_kmer = this->new_nodes.find(kmer);
+
+		if (found_kmer != this->new_nodes.end()) {
+			return found_kmer->second;	
+		}
+		else return -1;
+
+	}
+
+
    /**
-    * Find the hash value of a k-mer
-    */
-   u_int64_t get_hash_value(const kmer_t& seq)
-   {
-      u_int64_t krv = generate_KRHash_val_mod(seq, k_kmer);
-      u_int64_t res = this->bphf->lookup(krv); // still need only 64 bits for kmer_t
-      return res;
-   }
+	 * Find the hash value of a k-mer
+	 * Checks added and original nodes
+	 * Returns -1 is the kmer does not have a valid hash value (so it
+	 * isn't a kmer in the graph)
+	 */
+	u_int64_t get_hash_value(const kmer_t& seq)
+	{
+		u_int64_t res = this->new_node_hash(seq);
+
+		if (res != -1) {
+			// this was an added node
+		}
+		else {
+			// a regular node
+			u_int64_t krv = generate_KRHash_val_mod(seq, this->k_kmer);
+			res = this->bphf->lookup(krv); // still need only 64 bits for kmer_t
+	
+			if (res >= this->n_kmer_orig) {
+				// can't be valid
+				res = -1;
+			}
+
+		}
+		
+		return res;
+	}
+
 
    /**
     * Find the hash value of a k-mer
@@ -199,11 +260,12 @@ class generate_hash {
       // prime we will mod out by
       const u_int64_t tau = 1;
 
-      BOOST_LOG_TRIVIAL(info) << "Theoretical prime lower bound: " << tau*k_kmer*n_kmer*n_kmer;
+      BOOST_LOG_TRIVIAL(info) << "Theoretical prime lower bound: "
+			<< tau*this->k_kmer*this->n_kmer_orig*this->n_kmer_orig;
 
       //Having problem with overflows because of large primes
       //Even though the theoretical bound is above, let's try smaller ones.
-      double smallerPrime = n_kmer*n_kmer ;
+      double smallerPrime = this->n_kmer_orig*this->n_kmer_orig;
       Prime = getPrime((u_int64_t) smallerPrime );
 
       BOOST_LOG_TRIVIAL(info) << "Trying prime: " << Prime;
@@ -301,22 +363,23 @@ class generate_hash {
     * Given a kmer, find out its KRH
     * MODULO Prime
     * Need to use 128 bits since 4 * x might overflow
+	 * Note that this shouldn't be used for newly added nodes
+	 * that are not part of the main hash function
     */
    u_int64_t generate_KRHash_val_mod(const kmer_t& kmer,
 				     const unsigned& k ) {
-      uint128_t val = 0; // what will be the KRH value
 
-      // go through each bp and add value
-      for (unsigned i = 0;
-	   i < k;
-	   ++i) {
-	 // val += baseNum(kmer.at(i)) * pow(r, i);
-	 val = val + ((access_kmer( kmer, k, i) *
-		       static_cast< uint128_t >( powersOfRModP[i] )));
-	 val = val % Prime;
-      }
+		uint128_t val = 0; // what will be the KRH value
 
-      return static_cast<u_int64_t>(val);
+		// go through each bp and add value
+		for (unsigned i = 0; i < k; ++i) {
+	 		// val += baseNum(kmer.at(i)) * pow(r, i);
+	 		val = val + ((access_kmer( kmer, k, i) *
+				 static_cast< uint128_t >( powersOfRModP[i] )));
+	 		val = val % Prime;
+		}
+
+		return static_cast<u_int64_t>(val);
    }
 
    
@@ -326,29 +389,31 @@ class generate_hash {
    u_int64_t generate_KRHash_val(const kmer_t& kmer,
 				 const unsigned& k,
 				 const u_int64_t& P){
-      //  BOOST_LOG_TRIVIAL(trace) << "Generating KRHash val";
-      //use 128 bits to prevent overflow
-      largeUnsigned val = 0; // what will be the KRH value
+  
+		//  BOOST_LOG_TRIVIAL(trace) << "Generating KRHash val";
+		//use 128 bits to prevent overflow
+		largeUnsigned val = 0; // what will be the KRH value
 
-      // go through each bp and add value
-      for (unsigned i = 0;
-	   i < k;
-	   ++i) {
+		// go through each bp and add value
+		for (unsigned i = 0;
+		i < k;
+		++i) {
 	 // val += baseNum(kmer.at(i)) * pow(r, i);
-	       val +=
+			 val +=
 		  static_cast< largeUnsigned > ( access_kmer( kmer, k, static_cast<unsigned>(i)) ) *
 		  powersOfR[i]; //powersOfR[i] = r^{i + 1}
-      }
+		}
 
-      val = val % P;
+		val = val % P;
 
-      return static_cast<u_int64_t>(val);
+		return static_cast<u_int64_t>(val);
+
    }
 
    /**
     * Given a kmer, find out its KRH using base r and prime P
     * HOWEVER: does not mod out by P. So returns large unsigned
-         */
+    */
    largeUnsigned generate_KRHash_raw(const kmer_t& kmer,
 				     const unsigned& k ) {
       //  BOOST_LOG_TRIVIAL(trace) << "Generating KRHash val";
@@ -376,7 +441,9 @@ class generate_hash {
     *
     * target k-mer is OUT neighbor of source k-mer
     *
-    */
+ 	 * Note that this shouldn't be used for newly added nodes
+	 * that are not part of the main hash function
+      */
    void update_KRHash_val_OUT
       ( largeUnsigned& KR_val,       //KR hash of source kmer
 	const unsigned& first,   //character at front of source k-mer
@@ -407,7 +474,9 @@ class generate_hash {
     * This function takes as input a Karp-Rabin value (KR_val)
     *
     * target k-mer is IN neighbor of source k-mer
-    */
+ 	 * Note that this shouldn't be used for newly added nodes
+	 * that are not part of the main hash function
+      */
    void update_KRHash_val_IN
       ( largeUnsigned& KR_val,       //KR hash of source kmer
 	const unsigned& first,   //character at front of target k-mer
@@ -459,7 +528,7 @@ class generate_hash {
     * This function takes as input a Karp-Rabin value (KR_val) modulo Prime
     *
     * target k-mer is IN neighbor of source k-mer
-    */
+      */
    u_int64_t update_KRHash_val_IN_mod
       ( const u_int64_t& KR_val,       //KR hash of source kmer
 	const unsigned& first,   //character at front of target k-mer
@@ -500,17 +569,36 @@ class generate_hash {
    /*
     * Looks up the minimal perfect hash value, given the Karp-Rabin (raw value)
     * KR raw value means not modded out by the prime yet.
+	 * If in added nodes, just returns the hash for that kmer. Doesn't use KR.
         */
-   u_int64_t perfect_from_KR( const largeUnsigned& KR_val ) {
-      largeUnsigned KR2 = KR_val % Prime;
-      return this->bphf->lookup( static_cast< u_int64_t >(KR2) );
+   u_int64_t perfect_from_KR( const kmer_t& kmer, const largeUnsigned& KR_val ) {
+
+		u_int64_t hash = this->new_node_hash(kmer);
+
+		if (hash == -1) {
+			// not a new node
+      	largeUnsigned KR2 = KR_val % Prime;
+      	hash = this->bphf->lookup( static_cast< u_int64_t >(KR2) );
+		}
+
+		return hash;
+
    }
 
    /*
     * Looks up the minimal perfect hash value, given the Karp-Rabin (value modulo Prime)
+	 * If in added nodes, just returns the hash for that kmer. Doesn't use KR.
     */
-   u_int64_t perfect_from_KR_mod( const u_int64_t& KR_val ) {
-      return this->bphf->lookup( KR_val );
+   u_int64_t perfect_from_KR_mod( const kmer_t& kmer, const u_int64_t& KR_val ) {
+
+		u_int64_t hash = this->new_node_hash(kmer);
+      
+		if (hash == -1) {
+			// not a new node
+			hash = this->bphf->lookup( KR_val );
+		}
+
+		return hash;
    }
 
    /**
@@ -537,10 +625,10 @@ class generate_hash {
 					 KRHash.end());
 
       // MPHF for our KRHash function values
-      this->bphf = new boomphf::mphf<u_int64_t, hasher_t>(n_kmer, KRHash_vec, 4, 2.0, true, false);
+      this->bphf = new boomphf::mphf<u_int64_t, hasher_t>(this->n_kmer_orig, KRHash_vec, 4, 2.0, true, false);
 
       BOOST_LOG_TRIVIAL(info) << "Minimal perfect hash function created with "
-			      << (float) (bphf->totalBitSize())/n_kmer << " bits per element.";
+			      << (float) (bphf->totalBitSize())/this->n_kmer_orig << " bits per element.";
 
       //      KRHash.clear();
    }
