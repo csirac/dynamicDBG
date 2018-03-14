@@ -388,8 +388,8 @@ class Forest {
      */
     void unstoreNode(const u_int64_t& i) {
 
-		 assert (this->roots.find(i) != this->roots.end());
-		 assert (this->getData(i, 0));
+		 //assert (this->roots.find(i) != this->roots.end());
+		 //assert (this->getData(i, 0));
 
        this->roots.erase(i);
 
@@ -615,7 +615,7 @@ public:
 	/**
 	 * Add the node to the De Bruijn graph
 	 */
-	void addNode(kmer_t kmer) {
+	void addNode(const kmer_t& kmer) {
 
 		assert (!this->detect_membership(kmer));
 
@@ -629,6 +629,52 @@ public:
 		this->fo.addNode(hash, kmer);
 
 		this->n++;
+		
+		assert (this->detect_membership(kmer));
+
+	}
+
+	/**
+	 * Remove the node from the De Bruijn graph
+	 */
+	void removeNode(const kmer_t& kmer) {
+
+		assert (this->detect_membership(kmer));
+
+		// Remove all of its edges
+		this->isolateNode(kmer);
+
+		// Unstore it from the forest, if it has been stored.
+		u_int64_t hash = this->f(kmer);
+		this->fo.unstoreNode(hash);
+
+		// Remove it from the hash function
+		this->f.remove_node(kmer);
+
+		this->n--;
+
+		assert (!this->detect_membership(kmer));
+	}
+
+	
+	// Remove all edges intersecting with this kmer
+	void isolateNode(const kmer_t& kmer) {
+
+		vector<kmer_t> neighbors;
+		vector<bool> in_or_out;
+		get_neighbors(kmer, neighbors, in_or_out);
+
+		for (int i = 0; i < neighbors.size(); i++) {
+
+			if (in_or_out[i]) {
+				// edge goes from neighbor to kmer
+				assert(this->dynamicRemoveEdge(neighbors[i], kmer));
+			}
+			else {
+				// edge goes from kmer to neighbor
+				assert(this->dynamicRemoveEdge(kmer, neighbors[i]));
+			}
+		}
 
 	}
 
@@ -734,11 +780,11 @@ public:
 
 	 u_int64_t hash_u = this->f(u);
 
-	 assert ((hash_u >= 0) && (hash_u < this->n));
+	 assert (this->f.hash_in_range(hash_u));
 
 	 u_int64_t hash_v = this->f(v);
 
-	 assert ((hash_v >= 0) && (hash_v < this->n));
+	 assert (this->f.hash_in_range(hash_v));
 		 
     this->OUT.set(hash_u, last, true);
     this->IN.set(hash_v, first, true);
@@ -1422,7 +1468,6 @@ public:
    * Updates the forest.
    * Returns bool of whether an edge is actually deleted or not
    */
-	// TORI 
  bool dynamicRemoveEdge( const kmer_t& u, const kmer_t& v ) {
 
     //check if u, v are compatible
@@ -1454,10 +1499,10 @@ public:
     //making it this far means that an edge can be removed between them
 
 	 u_int64_t hashU = this->f( u );
-	 assert ((hashU >= 0) && (hashU < this->n));
+	 assert (this->f.hash_in_range(hashU));
  	
 	 u_int64_t hashV = this->f( v );
-	 assert ((hashV >= 0) && (hashV < this->n));
+	 assert (this->f.hash_in_range(hashV));
 
     unsigned outIndex = access_kmer( v, k, k - 1 );
     unsigned inIndex = access_kmer( u, k, 0 );
@@ -1688,9 +1733,8 @@ public:
     // Need to keep track of KRval, so it can be updated
 	 u_int64_t KR_val = f.generate_KRHash_val_mod( m, k ) ;
     u_int64_t hash = f.perfect_from_KR_mod( m, KR_val );
- 
-	 // If it is a real kmer value, it must map to 0..1-n
-	 if (hash >= this->n) {
+
+	 if (!this->f.hash_in_range(hash)) {
       return false;
     }
 
@@ -1743,7 +1787,7 @@ public:
       //            			       << f.generate_KRHash_val_mod( m, k ) << ' ' << KR_val;
 
       // hash must be in 0...n-1
-      if (hash >= this->n) {
+      if (!this->f.hash_in_range(hash)) {
 	 		//	 BOOST_LOG_TRIVIAL(debug) << "Returning false because of hash function blowup" << endl;
 			return false;
       }
@@ -2595,9 +2639,7 @@ public:
     cout << setw(10) << "Parent";
     cout << setw(10) << "Is root?" << endl;;
 
-    unordered_set<kmer_t>::iterator i;
-
-    for (i = kmers.begin(); i != kmers.end(); ++i) {
+    for (auto i = kmers.begin(); i != kmers.end(); ++i) {
         cout << setw(10) << get_kmer_str(*i, this->k);
 
         u_int64_t hash = this->f(*i);
@@ -2605,6 +2647,24 @@ public:
         if (!this->fo.isStored(hash)) {
             // This is not a root
            cout << setw(10) << get_kmer_str(this->fo.getNext(hash, *i, this->k), this->k);
+           cout << setw(10) << "No" << endl;
+        }
+        else {
+            // This is a root
+           cout << setw(10) << "None";
+           cout << setw(10) << "Yes" << endl;
+        }
+ 
+    } 
+
+    for (auto i = this->f.new_nodes.begin(); i != this->f.new_nodes.end(); ++i) {
+        cout << setw(10) << get_kmer_str(i->first, this->k);
+
+        u_int64_t hash = i->second;
+
+        if (!this->fo.isStored(hash)) {
+            // This is not a root
+           cout << setw(10) << get_kmer_str(this->fo.getNext(hash, i->first, this->k), this->k);
            cout << setw(10) << "No" << endl;
         }
         else {

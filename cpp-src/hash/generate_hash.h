@@ -30,8 +30,9 @@ typedef number<cpp_int_backend< LARGE_BITS, LARGE_BITS, unsigned_magnitude, chec
 class generate_hash {
 
  public:
-	// TORI
    u_int64_t n_kmer_orig; //the number of k-mers not considering deletions/insertions
+	u_int64_t max_hash; // the max value this hash function has ever been able to take
+							  // used to produce and check for invalid hash values
    unsigned k_kmer; //the lengths of the k-mers (max 32)
 
    /* 
@@ -51,6 +52,11 @@ class generate_hash {
 	// nodes. A hack until we have a dynamic hash function
 	// implementation
 	std::map<kmer_t, u_int64_t> new_nodes; 
+
+	// hash values that have been deleted
+	// Hack until we have a dynamic hash function
+	// TORI
+	//std::unordered_set<u_int64_t> deleted_hash;
    
    boophf_t* bphf; //MPHF we will generate
 
@@ -113,6 +119,7 @@ class generate_hash {
 
    void construct_hash_function( unordered_set< kmer_t >& kmers , u_int64_t n , unsigned k ) {
       this->n_kmer_orig = n; // number of k-mers
+		this->max_hash = n-1; // max possible hash value
       this->k_kmer = k; // length of each k-mer
 
       BOOST_LOG_TRIVIAL(info) << "Constructing the hash function ...";
@@ -182,21 +189,74 @@ class generate_hash {
 	 * Don't actually have a dynamic hash function
 	 * Returns new hash value
 	 */
+	// TORI
 	u_int64_t add_node(const kmer_t& new_kmer)
 	{
+
 		assert(this->new_nodes.find(new_kmer) == this->new_nodes.end());
 
+		// check if this node was previously deleted
+
+		//auto it = this->deleted_nodes.find(this->f(new_kmer));
+		
+		//if (it != this->deleted_nodes.end()) {
+
+			// this was a new node
+		//	this->deleted_nodes.erase(it);
+		//}
+
 		// Add it to the new nodes map with the next available hash value
-		u_int64_t new_hash = this->n_kmer_orig + this->new_nodes.size();
-		//this->new_nodes.insert(std::pair<kmer_t, u_int64_t>(new_kmer, new_hash));
+		u_int64_t new_hash = this->max_hash + 1;
+		this->max_hash++;
+
 		this->new_nodes[new_hash] = new_kmer;
+
 		return new_hash;
 	}
+
+	// TORI
+	//void remove_node(const kmer_t& node, const u_int64_t& hash) {
+	void remove_node(const kmer_t& node) {
+		
+		//assert(this->deleted_nodes.find(node) == this->deleted_nodes.end());
+
+		auto it = this->new_nodes.find(node);
+		
+		if (it != this->new_nodes.end()) {
+
+			// this was a new node
+			this->new_nodes.erase(it);
+		}
+		//else {
+
+			// one of the original nodes
+		//	this->deleted_nodes.insert(hash);	
+		//}
+		
+	}
+
+	// Returns whether one of the original hash values/nodes has been deleted
+	// Cannot detect if an added node was deleted (but those should be removed
+	// from their map anyways)
+	// TORI
+	/**bool is_deleted(const u_int64_t& hash) {
+
+		auto it = this->deleted_nodes.find(hash);
+		
+		if (it != this->deleted_nodes.end()) {
+			return true;
+		}
+		else {
+			return false;
+		}
+
+	}*/
 
 	/**
 	 * Checks whether this kmer has been stored as one of the new nodes
 	 * And returns the hash if it has
-	 * o/w returns -1
+	 * o/w returns this->max_hash + 1
+	 * which is never a valid hash
 	 */
 	u_int64_t new_node_hash(const kmer_t& kmer) {
 
@@ -205,33 +265,46 @@ class generate_hash {
 		if (found_kmer != this->new_nodes.end()) {
 			return found_kmer->second;	
 		}
-		else return -1;
+		else return this->max_hash + 1;
 
 	}
 
+	/**
+	 * Returns whether the hash value is in the range of possible hash values
+	 * Between 0 and this->max_hash
+	 */
+	bool hash_in_range(const u_int64_t& hash) {
+
+		if ((hash < 0) || (hash > this->max_hash)) {
+
+			return false;
+		}
+		else {
+
+			return true;
+		}
+
+	}
 
    /**
 	 * Find the hash value of a k-mer
 	 * Checks added and original nodes
-	 * Returns -1 is the kmer does not have a valid hash value (so it
-	 * isn't a kmer in the graph)
+	 * Will still return hash value of deleted nodes, that must be
+	 * checked separately.
 	 */
 	u_int64_t get_hash_value(const kmer_t& seq)
 	{
 		u_int64_t res = this->new_node_hash(seq);
 
-		if (res != -1) {
-			// this was an added node
-		}
-		else {
-			// a regular node
+		if (res == this->max_hash + 1) {
+			// not an added node
 			u_int64_t krv = generate_KRHash_val_mod(seq, this->k_kmer);
 			res = this->bphf->lookup(krv); // still need only 64 bits for kmer_t
 	
-			if (res >= this->n_kmer_orig) {
+			//if (!this->isValidOriginalHash(res)) {
 				// can't be valid
-				res = -1;
-			}
+			//	res = -1;
+			//}
 
 		}
 		
@@ -575,7 +648,7 @@ class generate_hash {
 
 		u_int64_t hash = this->new_node_hash(kmer);
 
-		if (hash == -1) {
+		if (hash == this->max_hash + 1) {
 			// not a new node
       	largeUnsigned KR2 = KR_val % Prime;
       	hash = this->bphf->lookup( static_cast< u_int64_t >(KR2) );
@@ -593,7 +666,7 @@ class generate_hash {
 
 		u_int64_t hash = this->new_node_hash(kmer);
       
-		if (hash == -1) {
+		if (hash == this->max_hash + 1) {
 			// not a new node
 			hash = this->bphf->lookup( KR_val );
 		}
