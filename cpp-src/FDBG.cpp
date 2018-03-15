@@ -375,8 +375,8 @@ class Forest {
      */
     void storeNode(const u_int64_t& i, const kmer_t& str) {
 
-		 assert (this->roots.find(i) == this->roots.end());
-		 assert (!this->getData(i, 0));
+		 //assert (this->roots.find(i) == this->roots.end());
+		 //assert (!this->getData(i, 0));
 
        this->roots[i] = str;
 
@@ -617,15 +617,22 @@ public:
 	 */
 	void addNode(const kmer_t& kmer) {
 
+		BOOST_LOG_TRIVIAL(info) << "Adding kmer " << get_kmer_str(kmer, this->k) << "...";
+
 		assert (!this->detect_membership(kmer));
 
 		// Add it to the hash function
 		u_int64_t hash = this->f.add_node(kmer);
+		BOOST_LOG_TRIVIAL(info) << "Assigned hash value " << hash;
+		
+
+		assert (this->f(kmer) == hash);
 
 		// add rows for it to IN and OUT
 		this->IN.addRow();
 		this->OUT.addRow();
 
+		assert (this->f.hash_in_range(hash));
 		this->fo.addNode(hash, kmer);
 
 		this->n++;
@@ -638,6 +645,8 @@ public:
 	 * Remove the node from the De Bruijn graph
 	 */
 	void removeNode(const kmer_t& kmer) {
+		
+		BOOST_LOG_TRIVIAL(info) << "Deleting kmer " << get_kmer_str(kmer, this->k) << "...";
 
 		assert (this->detect_membership(kmer));
 
@@ -646,6 +655,7 @@ public:
 
 		// Unstore it from the forest, if it has been stored.
 		u_int64_t hash = this->f(kmer);
+		assert (this->f.hash_in_range(hash));
 		this->fo.unstoreNode(hash);
 
 		// Remove it from the hash function
@@ -761,16 +771,10 @@ public:
 
   }
 
-  void add_edge(const kmer_t& edge ) {
-
-    // figure out the two kmers
-    kmer_t u = 0;
-    kmer_t v = 0;
-
-    split_edge( edge, u, v );
-
-	 assert (this->detect_membership(u));
-	 assert (this->detect_membership(v));
+  /**
+	* Add an edge from u to v, but no forest update procedure.
+	*/
+  void add_edge(const kmer_t& u, const kmer_t& v ) {
 
     // get which column in sigma to put in (corresponds to which letter is the first/last)
     // number 0..3 represent each alphabet letter
@@ -789,6 +793,20 @@ public:
     this->OUT.set(hash_u, last, true);
     this->IN.set(hash_v, first, true);
  
+  }
+
+  /**
+	* Add an edge, but no forest update procedure.
+	*/
+  void add_edge(const kmer_t& edge ) {
+
+    // figure out the two kmers
+    kmer_t u = 0;
+    kmer_t v = 0;
+
+    split_edge( edge, u, v );
+
+	 this->add_edge(u, v); 
   }
 
   // Take a k+1-mer and split into beginning and end k-mers
@@ -918,18 +936,49 @@ public:
 
    }
    
+	// Check if it is possible to have an edge from u to v
+	// based upon the kmers
+	bool edgePossible(const kmer_t& u, const kmer_t& v) {
+
+		unsigned ui, vi;
+
+    	for (unsigned i = 0; i < (this->k - 1); ++i) {
+	      ui = access_kmer( u, this->k, i + 1 );
+   	   vi = access_kmer( v, this->k, i );
+
+      	if (ui != vi) {
+				return false;
+      	}
+    	}
+		
+		return true;	
+	}
+
    /*
-    * newDynamicAddEdge( 
+    * Add an edge and then do the forest update procedure 
+	 * Returns whether an edge was added or not
     */
    bool newDynamicAddEdge( const kmer_t& u, const kmer_t& v ) {
+
+		assert(this->detect_membership(u));
+		assert(this->detect_membership(v));
+		assert(this->edgePossible(u,v));
+
+		if (!this->edgePossible(u, v)) {
+	
+			return false;
+		}
       
       u_int64_t hashU = f( u );
       u_int64_t hashV = f( v );
+
+		assert(this->f.hash_in_range(hashU));
+		assert(this->f.hash_in_range(hashV));
      
       unsigned outIndex = access_kmer( v, k, k - 1 );
       unsigned inIndex = access_kmer( u, k, 0 );
       if ( OUT.get(hashU, outIndex) ) {
-	 return false; // edge already exists
+			return false; // edge already exists
       }
 
       //making it here means that edge is compatible and edge is not already in graph
@@ -1205,6 +1254,7 @@ public:
         //travelUp(u, this->alpha + 1, above_breakpoint, above_breakpoint_hash);
 
         // temporarily store this as a node to effectively break it off
+		  assert (this->f.hash_in_range(breakpoint_hash));
         this->fo.storeNode(breakpoint_hash, breakpoint);
 
         // Update data for new smaller tree
@@ -1283,6 +1333,7 @@ public:
         //travelUp(v, this->alpha + 1, above_breakpoint, above_breakpoint_hash);
 
         // temporarily store this as a node to effectively break it off
+		  assert (this->f.hash_in_range(breakpoint_hash));
         this->fo.storeNode(breakpoint_hash, breakpoint);
 
         //kmer_t root_test;
@@ -1393,14 +1444,18 @@ public:
 		
 		if (new_root != root_u) {
 		   //BOOST_LOG_TRIVIAL(debug) << "Unstoring root " << root_u_hash;
+			assert (this->f.hash_in_range(root_u_hash));
 		   this->fo.unstoreNode(root_u_hash);
 		}
 
+		assert (this->f.hash_in_range(root_v_hash));
 		this->fo.unstoreNode(root_v_hash);
 
+		assert (this->f.hash_in_range(new_root_hash));
 		this->fo.storeNode(new_root_hash, new_root);
 
 		// forest edge from v to u
+		assert (this->f.hash_in_range(v_hash));
 		this->fo.setNode(v_hash, true, u_letter);
 	     }
 	     // The root is somewhere in v's tree
@@ -1545,6 +1600,7 @@ public:
      u_int64_t node_hash = this->f.perfect_from_KR_mod(node, node_kr);
 
      // we are already at the root, nothing to store
+	  assert (this->f.hash_in_range(node_hash));
      if (this->fo.isStored(node_hash)) {
 
         return;
@@ -1563,6 +1619,7 @@ public:
      u_int64_t grandparent_kr, grandparent_hash;
 
      // Keep reversing edges until we get to the last one
+	  assert (this->f.hash_in_range(parent_hash));
      while (!this->fo.isStored(parent_hash)) {
 
         // Save links to the next place on the tree
@@ -1611,6 +1668,7 @@ public:
 
      // If the child went to parent via OUT, then the parent will get to
      // the child from IN, etc.
+	  assert (this->f.hash_in_range(node_hash));
      this->fo.set_parent_in_IN(node_hash, !in);
 
      //BOOST_LOG_TRIVIAL(debug) << "Node " << node_hash
@@ -1620,11 +1678,13 @@ public:
      if (in) {
         // Need the last letter of the new_parent
         l = access_kmer(new_parent_kmer, this->k, this->k - 1);
+	  	  assert (this->f.hash_in_range(node_hash));
         this->fo.setLetter(node_hash, l);
      }
      else {
         // Need the first letter of the new_parent
         l = access_kmer(new_parent_kmer, this->k, 0);
+	  	  assert (this->f.hash_in_range(node_hash));
         this->fo.setLetter(node_hash, l);
 
      }
@@ -1644,6 +1704,7 @@ public:
       //BOOST_LOG_TRIVIAL(debug) << "Getting info for the parent of "
       //   << get_kmer_str(node, this->k);
 
+	  	assert (this->f.hash_in_range(node_hash));
       parent = this->fo.getNext(node_hash, node, this->k);
 
       //BOOST_LOG_TRIVIAL(debug) << "That's parent " << get_kmer_str(parent, this->k);
@@ -1704,16 +1765,6 @@ public:
     } 
 
   }
-
-	void printAddedHashFunction() {
-
-		for (auto it = this->f.new_nodes.begin(); it != this->f.new_nodes.end(); it++) {
-	     cout << setw(10) << get_kmer_str(it->first, this->k);
-        cout << setw(10) << it->second; 
-        cout << endl;
-		}
-
-	}
 
    uint64_t getPrime() {
       return f.Prime;
@@ -1844,6 +1895,7 @@ public:
      //BOOST_LOG_TRIVIAL(debug) << "The hash value was found to be " << hash; 
 
      // whether we get to the parent via IN
+	  assert (this->f.hash_in_range(hash));
      bool in  = this->fo.parent_in_IN(hash);
 
      unsigned letter; // what letter m has but its parent doesn't
@@ -1900,6 +1952,7 @@ public:
     //   << " is an ancestor of " << get_kmer_str(node, this->k);
 
     // node could be a root
+	 assert (this->f.hash_in_range(hash));
     if (this->fo.isStored(hash)) {
        //BOOST_LOG_TRIVIAL(debug) << "The node is a root and not equal to ancestor";
        // We already checked whether node and ancestor were the same
@@ -2018,6 +2071,7 @@ public:
     u_int64_t parent_kr;
 
 
+	 assert (this->f.hash_in_range(hash));
     if (this->fo.isStored(hash)) {
 
       root = node;
@@ -2057,7 +2111,7 @@ public:
     kmer_t parent;
     u_int64_t parent_kr;
 
-
+	 assert (this->f.hash_in_range(hash));
     if (this->fo.isStored(hash)) {
 
       ancestor = node;
@@ -2095,6 +2149,8 @@ public:
 		    vector<kmer_t>& children,
 		    vector< uint64_t >& children_hash) {
 
+	  //BOOST_LOG_TRIVIAL(debug) << "Getting the children in the forest of " << get_kmer_str(node, this->k);
+
      children.clear();
      children_hash.clear();
   
@@ -2125,6 +2181,7 @@ public:
          first = access_kmer(neighbors[i], this->k, 0);
 			Letter first_letter (first);
 			kmer_t neighbor_kmer = pushOnFront(node, first_letter, this->k);
+	  		//BOOST_LOG_TRIVIAL(debug) << "Looking at IN neighbor " << get_kmer_str(neighbor_kmer, this->k);
  
          neighbor_hash = f.perfect_from_KR_mod(neighbor_kmer, f.update_KRHash_val_IN_mod(node_kr,
            first, node_last));
@@ -2137,6 +2194,7 @@ public:
          last = access_kmer(neighbors[i], this->k, k-1);
 			Letter last_letter (last);
 			kmer_t neighbor_kmer = pushOnBack(node, last_letter, this->k);
+	  		//BOOST_LOG_TRIVIAL(debug) << "Looking at OUT neighbor " << get_kmer_str(neighbor_kmer, this->k);
 
          neighbor_hash = f.perfect_from_KR_mod(neighbor_kmer, f.update_KRHash_val_OUT_mod(node_kr,
            node_first, last));
@@ -2145,6 +2203,7 @@ public:
 
 
        // Get the parent of this neighbor
+	 	 assert (this->f.hash_in_range(neighbor_hash));
        parent = this->fo.getNext(neighbor_hash, neighbors[i], this->k);
 
        // this node is its parent, and it is not a root
@@ -2542,6 +2601,7 @@ public:
  
   void store( kmer_t mer ) {
     u_int64_t val = f( mer );
+	 assert (this->f.hash_in_range(val));
     this->fo.storeNode(val, mer);
   }
   
@@ -2579,20 +2639,7 @@ public:
         cout << endl;
     } 
 
-    for (auto it = this->f.new_nodes.begin(); it != this->f.new_nodes.end(); ++it) {
-        cout << setw(10) << get_kmer_str(it->first, this->k);
-
-        u_int64_t hash = it->second; 
-        cout << setw(5) << this->IN.get(hash, 0);
-        cout << setw(5) << this->IN.get(hash, 1);
-        cout << setw(5) << this->IN.get(hash, 2);
-        cout << setw(5) << this->IN.get(hash, 3);
-        cout << endl;
-    } 
-
     cout << endl;
-
-
 
     cout << setw(30) << "===== OUT =====" << endl << endl;
  
@@ -2612,18 +2659,6 @@ public:
         cout << setw(5) << this->OUT.get(hash, 3);
         cout << endl;
     } 
-
-    for (auto it = this->f.new_nodes.begin(); it != this->f.new_nodes.end(); ++it) {
-        cout << setw(10) << get_kmer_str(it->first, this->k);
-
-        u_int64_t hash = it->second; 
-        cout << setw(5) << this->OUT.get(hash, 0);
-        cout << setw(5) << this->OUT.get(hash, 1);
-        cout << setw(5) << this->OUT.get(hash, 2);
-        cout << setw(5) << this->OUT.get(hash, 3);
-        cout << endl;
-    } 
-
 
     cout << endl;
 
@@ -2656,26 +2691,6 @@ public:
         }
  
     } 
-
-    for (auto i = this->f.new_nodes.begin(); i != this->f.new_nodes.end(); ++i) {
-        cout << setw(10) << get_kmer_str(i->first, this->k);
-
-        u_int64_t hash = i->second;
-
-        if (!this->fo.isStored(hash)) {
-            // This is not a root
-           cout << setw(10) << get_kmer_str(this->fo.getNext(hash, i->first, this->k), this->k);
-           cout << setw(10) << "No" << endl;
-        }
-        else {
-            // This is a root
-           cout << setw(10) << "None";
-           cout << setw(10) << "Yes" << endl;
-        }
- 
-    } 
-
-    cout << endl;
 
   }
 

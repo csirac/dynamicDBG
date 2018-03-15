@@ -70,6 +70,7 @@ class generate_hash {
 	// TORITODO	
    void save( ostream& of ) {
      of.write ( (char*) &n_kmer_orig, sizeof( u_int64_t ) );
+     of.write ( (char*) &max_hash, sizeof( u_int64_t ) );
      of.write ( (char*) &k_kmer, sizeof( unsigned ) );
      of.write ( (char*) &r, sizeof( u_int64_t ) );
      of.write ( (char*) &rinv, sizeof( u_int64_t ) );
@@ -82,6 +83,7 @@ class generate_hash {
 	// TORITODO
    void load( istream& of ) {
      of.read ( (char*) &n_kmer_orig, sizeof( u_int64_t ) );
+     of.read ( (char*) &max_hash, sizeof( u_int64_t ) );
      of.read ( (char*) &k_kmer, sizeof( unsigned ) );
      of.read ( (char*) &r, sizeof( u_int64_t ) );
      of.read ( (char*) &rinv, sizeof( u_int64_t ) );
@@ -209,7 +211,9 @@ class generate_hash {
 		u_int64_t new_hash = this->max_hash + 1;
 		this->max_hash++;
 
-		this->new_nodes[new_hash] = new_kmer;
+		this->new_nodes.insert(make_pair(new_kmer, new_hash));
+		
+		assert(this->new_nodes.find(new_kmer) != this->new_nodes.end());
 
 		return new_hash;
 	}
@@ -218,7 +222,6 @@ class generate_hash {
 	//void remove_node(const kmer_t& node, const u_int64_t& hash) {
 	void remove_node(const kmer_t& node) {
 		
-		//assert(this->deleted_nodes.find(node) == this->deleted_nodes.end());
 
 		auto it = this->new_nodes.find(node);
 		
@@ -232,6 +235,8 @@ class generate_hash {
 			// one of the original nodes
 		//	this->deleted_nodes.insert(hash);	
 		//}
+		
+		assert(this->new_nodes.find(node) == this->new_nodes.end());
 		
 	}
 
