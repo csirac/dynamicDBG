@@ -103,6 +103,102 @@ double randomMembership(const unsigned& count, FDBG& Graph, const unordered_set<
    return time_elapsed/CLOCKS_PER_SEC;
 }
 
+/**
+ * Remove and then add back in random kmers along with their edges
+ *
+ * Returns elapsed time in seconds for removals and for additions
+ */
+pair<double, double> randomDynamicNodes(const unsigned& count, FDBG& Graph, const unordered_set<kmer_t>& kmers) {
+
+   double time_elapsed_remove = 0;
+   double time_elapsed_add = 0;
+
+   // get random number generator
+   std::random_device rd;
+   std::mt19937 rand (rd());
+   std::uniform_int_distribution<u_int64_t> unif_dist (0, kmers.size() - 1);
+
+   vector<kmer_t> vKmers( kmers.begin(), kmers.end() );
+
+   for (int i = 0; i < count; i++) {
+
+      int randnum = unif_dist(rand);
+		kmer_t kmer = vKmers[randnum];
+
+		//BOOST_LOG_TRIVIAL(info) << "Removing and then adding back in " << kmer;
+
+		// get the node's neighbors so the edges can be added back
+		vector<kmer_t> neighbors;
+		vector<bool> in_or_out;
+		Graph.get_neighbors(kmer, neighbors, in_or_out);
+
+      // Remove the node
+		size_t depth;
+		kmer_t root;
+		unsigned size_before = Graph.getTreeSize(kmer, depth, root);
+      clock_t t_start = clock();
+      Graph.removeNode(kmer);
+		//Graph.isolateNode(kmer);
+		//for (int i = 0; i < neighbors.size(); i++) {
+		//	if (in_or_out[i]) {
+		//		// was in IN
+		//		Graph.dynamicRemoveEdge(neighbors[i], kmer);
+		//	}
+		//	else {
+		//		// was in OUT
+		//		Graph.dynamicRemoveEdge(kmer, neighbors[i]);
+		//	}
+		//}
+      time_elapsed_remove += double (clock() - t_start);
+      //assert (!Graph.detect_membership(kmer));
+
+	   // Add the node along with its edges back in
+      t_start = clock();
+      Graph.addNode(kmer);
+		unsigned size = Graph.getTreeSize(kmer, depth, root);
+      assert (Graph.detect_membership(kmer));
+		assert (size == 1);
+		assert (root == kmer);
+		for (int i = 0; i < neighbors.size(); i++) {
+			if (in_or_out[i]) {
+				// was in IN
+				Graph.newDynamicAddEdge(neighbors[i], kmer);
+			}
+			else {
+				// was in OUT
+				Graph.newDynamicAddEdge(kmer, neighbors[i]);
+			}
+		}
+		for (int i = 0; i < neighbors.size(); i++) {
+			assert(Graph.getTreeSize(neighbors[i], depth, root) >= min(Graph.alpha, size_before));
+		}
+      time_elapsed_add += double (clock() - t_start);
+      assert (Graph.detect_membership(kmer));
+   }
+
+   return make_pair(time_elapsed_remove/CLOCKS_PER_SEC, time_elapsed_add/CLOCKS_PER_SEC);
+}
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//

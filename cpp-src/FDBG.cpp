@@ -617,13 +617,13 @@ public:
 	 */
 	void addNode(const kmer_t& kmer) {
 
-		BOOST_LOG_TRIVIAL(info) << "Adding kmer " << get_kmer_str(kmer, this->k) << "...";
+		//BOOST_LOG_TRIVIAL(info) << "Adding kmer " << get_kmer_str(kmer, this->k) << "...";
 
 		assert (!this->detect_membership(kmer));
 
 		// Add it to the hash function
 		u_int64_t hash = this->f.add_node(kmer);
-		BOOST_LOG_TRIVIAL(info) << "Assigned hash value " << hash;
+		//BOOST_LOG_TRIVIAL(info) << "Assigned hash value " << hash;
 		
 
 		assert (this->f(kmer) == hash);
@@ -646,7 +646,7 @@ public:
 	 */
 	void removeNode(const kmer_t& kmer) {
 		
-		BOOST_LOG_TRIVIAL(info) << "Deleting kmer " << get_kmer_str(kmer, this->k) << "...";
+		//BOOST_LOG_TRIVIAL(info) << "Deleting kmer " << get_kmer_str(kmer, this->k) << "...";
 
 		assert (this->detect_membership(kmer));
 
