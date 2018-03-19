@@ -204,40 +204,42 @@ int main(int argc, char* argv[]) {
    std::mt19937 gen(rd());
    std::uniform_int_distribution<u_int64_t> sample_dis(0, pow(2, 2*k) - 1);
 
-
-
-	// Node addition
-   BOOST_LOG_TRIVIAL(info) << "Node addition tests ...";
+  	// Node removal and addition
+   BOOST_LOG_TRIVIAL(info) << "Node removal and addition tests ...";
    //nQuery = 0.001*kmers.size();
-   size_t nQuery = 1000;
-   BOOST_LOG_TRIVIAL(info) << "Adding " << nQuery << " nodes to the graph";
-   kmer_t kk;
-	vector<kmer_t> new_nodes;
-   t_elapsed = 0.0;
-   clock_t t_start;
-   for (unsigned i = 0; i < nQuery; ++i) {
-     //generate a random k-mer
-     kk = sample_dis( gen ) ;
-	  new_nodes.push_back(kk);
-     //BOOST_LOG_TRIVIAL( info ) << "Adding k-mer: " << get_kmer_str( kk, k ) << ' ' << endl;
-     t_start = clock();
-     Graph.addNode(kk);
-	  t_elapsed += double(clock() - t_start);
-   }
-   t_elapsed = t_elapsed/ CLOCKS_PER_SEC;
-   
-	// test that it worked
-	for (unsigned i = 0; i < new_nodes.size(); ++i) {
-     assert(Graph.detect_membership(new_nodes[i]));
-   }
+   size_t nQuery = 1000000;
+   BOOST_LOG_TRIVIAL(info) << "Removing and then adding back in " << nQuery
+		<< " (along with edges) nodes in the graph";
+   pair<double, double> time_elapsed = randomDynamicNodes(nQuery, Graph, kmers);
+	BOOST_LOG_TRIVIAL(info) << "Average time for node removal: " << time_elapsed.first/nQuery;
+	BOOST_LOG_TRIVIAL(info) << "Average time for node addition plus edge additions: "
+		<< time_elapsed.second/nQuery;
 
+   /**
+    * tree height tests after node addition/deletion
+    */
+   BOOST_LOG_TRIVIAL(info) << "Tree height tests after node addition/deletion ...";
+
+  
+   Graph.getTreeData(num_trees, avg_height, num_above, num_below ); 
+
+   BOOST_LOG_TRIVIAL(info) << "There are " << num_trees << " trees";
+   BOOST_LOG_TRIVIAL(info) << "The average height of a tree is " << avg_height;
+   BOOST_LOG_TRIVIAL(info) << "The number of trees above the max height is  "
+      << num_above;
+   BOOST_LOG_TRIVIAL(info) << "The number of trees below the min size is  "
+      << num_below;
+
+   treesBelowSize.push_back( num_below );
+   nCCs.push_back( Graph.numberConnectedComponents( kmers, NSCC ) );
+   nSCC.push_back( NSCC );
 
    BOOST_LOG_TRIVIAL(info) << "Query testing...";
 
    nQuery = 1000000;
-   kk;
+   kmer_t kk;
    t_elapsed = 0.0;
-   t_start;
+   clock_t t_start;
    for (unsigned i = 0; i < nQuery; ++i) {
      //generate a random k-mer
      kk = sample_dis( gen ) ;
