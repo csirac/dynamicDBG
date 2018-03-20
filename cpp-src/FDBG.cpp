@@ -22,6 +22,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #ifndef FDBG_class
 #define FDBG_class
+#define NDEBUG
 
 //#include "hash/HashUtil.cpp"
 #include "hash/generate_hash.h"
@@ -429,12 +430,12 @@ class Forest {
       }
     }
 
-	 // TORITODO
+	 // TODO
     u_int64_t getBitSize() {
         return this->bitarray.total_bit_size() + this->roots.size()*8*sizeof(kmer_t);
     }
 
-	// TORITODO
+	// TODO
   void save( ostream& of ) {
     of.write ( (char*) &this->n_orig, sizeof( u_int64_t ) );
     unsigned number_stored = roots.size();
@@ -448,7 +449,7 @@ class Forest {
     bitarray.save( of );
   }
 
-	// TORITODO
+	// TODO
   void load( istream& of ) {
     of.read ( (char*) &this->n_orig, sizeof( u_int64_t ) );
     unsigned number_stored;
@@ -544,7 +545,7 @@ class INorOUT {
 
     }
 
-	// TORITODO
+	// TODO
   size_t getBitSize() {
         return this->bitarray.total_bit_size() + 8*sizeof(u_int64_t);
     }
@@ -581,7 +582,6 @@ public:
    double construction_time;
    Logger logg;
 
-  // TORITODO   
   void save( ostream& of ) {
     of.write ( (char*) &n, sizeof( u_int64_t ) );
     of.write ( (char*) &sigma, sizeof( unsigned ) );
@@ -595,7 +595,6 @@ public:
     f.save( of );
   }
 
-	// TORITODO
   void load( istream& of ) {
     of.read ( (char*) &n, sizeof( u_int64_t ) );
     of.read ( (char*) &sigma, sizeof( unsigned ) );
@@ -678,17 +677,18 @@ public:
 
 			if (in_or_out[i]) {
 				// edge goes from neighbor to kmer
-				assert(this->dynamicRemoveEdge(neighbors[i], kmer));
+				bool removed = this->dynamicRemoveEdge(neighbors[i], kmer);
+				assert(removed);
 			}
 			else {
 				// edge goes from kmer to neighbor
-				assert(this->dynamicRemoveEdge(kmer, neighbors[i]));
+				bool removed = this->dynamicRemoveEdge(kmer, neighbors[i]);
+				assert(removed);
 			}
 		}
 
 	}
 
-	// TORITODO 
   size_t bitSize() {
 
     // IN and OUT

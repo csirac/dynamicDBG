@@ -1,5 +1,6 @@
 #ifndef GEN_HASH
 #define GEN_HASH
+#define NDEBUG
 
 #include "BooPHF.h"
 #include <stdio.h>
@@ -53,11 +54,6 @@ class generate_hash {
 	// implementation
 	std::map<kmer_t, u_int64_t> new_nodes; 
 
-	// hash values that have been deleted
-	// Hack until we have a dynamic hash function
-	// TORI
-	//std::unordered_set<u_int64_t> deleted_hash;
-   
    boophf_t* bphf; //MPHF we will generate
 
    u_int64_t r; // the base for our Karp-Rabin Hash function
@@ -67,7 +63,7 @@ class generate_hash {
    const static short sigma = 4; // alphabet size
 
 
-	// TORITODO	
+	// TODO	
    void save( ostream& of ) {
      of.write ( (char*) &n_kmer_orig, sizeof( u_int64_t ) );
      of.write ( (char*) &max_hash, sizeof( u_int64_t ) );
@@ -80,7 +76,7 @@ class generate_hash {
      bphf->save( of );
    }
 
-	// TORITODO
+	// TODO
    void load( istream& of ) {
      of.read ( (char*) &n_kmer_orig, sizeof( u_int64_t ) );
      of.read ( (char*) &max_hash, sizeof( u_int64_t ) );
@@ -191,7 +187,6 @@ class generate_hash {
 	 * Don't actually have a dynamic hash function
 	 * Returns new hash value
 	 */
-	// TORI
 	u_int64_t add_node(const kmer_t& new_kmer)
 	{
 
@@ -218,7 +213,6 @@ class generate_hash {
 		return new_hash;
 	}
 
-	// TORI
 	//void remove_node(const kmer_t& node, const u_int64_t& hash) {
 	void remove_node(const kmer_t& node) {
 		
@@ -240,23 +234,6 @@ class generate_hash {
 		
 	}
 
-	// Returns whether one of the original hash values/nodes has been deleted
-	// Cannot detect if an added node was deleted (but those should be removed
-	// from their map anyways)
-	// TORI
-	/**bool is_deleted(const u_int64_t& hash) {
-
-		auto it = this->deleted_nodes.find(hash);
-		
-		if (it != this->deleted_nodes.end()) {
-			return true;
-		}
-		else {
-			return false;
-		}
-
-	}*/
-
 	/**
 	 * Checks whether this kmer has been stored as one of the new nodes
 	 * And returns the hash if it has
@@ -265,12 +242,17 @@ class generate_hash {
 	 */
 	u_int64_t new_node_hash(const kmer_t& kmer) {
 
-		map<kmer_t, u_int64_t>::iterator found_kmer = this->new_nodes.find(kmer);
+		if (!this->new_nodes.empty()) {
 
-		if (found_kmer != this->new_nodes.end()) {
-			return found_kmer->second;	
+			map<kmer_t, u_int64_t>::iterator found_kmer = this->new_nodes.find(kmer);
+
+			if (found_kmer != this->new_nodes.end()) {
+				return found_kmer->second;	
+			}
 		}
-		else return this->max_hash + 1;
+
+		
+		return this->max_hash + 1;
 
 	}
 

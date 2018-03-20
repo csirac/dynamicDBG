@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 
+#define NDEBUG
 #include <random>
 #include <math.h>
 #include <set>
@@ -133,9 +134,9 @@ pair<double, double> randomDynamicNodes(const unsigned& count, FDBG& Graph, cons
 		Graph.get_neighbors(kmer, neighbors, in_or_out);
 
       // Remove the node
-		size_t depth;
-		kmer_t root;
-		unsigned size_before = Graph.getTreeSize(kmer, depth, root);
+		//size_t depth;
+		//kmer_t root;
+		//unsigned size_before = Graph.getTreeSize(kmer, depth, root);
       clock_t t_start = clock();
       Graph.removeNode(kmer);
 		//Graph.isolateNode(kmer);
@@ -155,10 +156,10 @@ pair<double, double> randomDynamicNodes(const unsigned& count, FDBG& Graph, cons
 	   // Add the node along with its edges back in
       t_start = clock();
       Graph.addNode(kmer);
-		unsigned size = Graph.getTreeSize(kmer, depth, root);
+		//unsigned size = Graph.getTreeSize(kmer, depth, root);
       assert (Graph.detect_membership(kmer));
-		assert (size == 1);
-		assert (root == kmer);
+		//assert (size == 1);
+		//assert (root == kmer);
 		for (int i = 0; i < neighbors.size(); i++) {
 			if (in_or_out[i]) {
 				// was in IN
@@ -169,9 +170,9 @@ pair<double, double> randomDynamicNodes(const unsigned& count, FDBG& Graph, cons
 				Graph.newDynamicAddEdge(kmer, neighbors[i]);
 			}
 		}
-		for (int i = 0; i < neighbors.size(); i++) {
-			assert(Graph.getTreeSize(neighbors[i], depth, root) >= min(Graph.alpha, size_before));
-		}
+		//for (int i = 0; i < neighbors.size(); i++) {
+		//	assert(Graph.getTreeSize(neighbors[i], depth, root) >= min(Graph.alpha, size_before));
+		//}
       time_elapsed_add += double (clock() - t_start);
       assert (Graph.detect_membership(kmer));
    }
