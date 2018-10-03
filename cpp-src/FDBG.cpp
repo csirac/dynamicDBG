@@ -180,7 +180,7 @@ class Forest {
     u_int64_t n_orig;
 
     // The kmers of our roots
-    unordered_map<u_int64_t, kmer_t> roots;
+    map<u_int64_t, kmer_t> roots;
 
     /**Constructor*/
     Forest(u_int64_t n): bitarray(4*n) {
@@ -844,7 +844,7 @@ public:
 
      // go through each tree
 
-     unordered_map<u_int64_t, kmer_t>::iterator iter;
+     map<u_int64_t, kmer_t>::iterator iter;
      map< unsigned, unsigned >::iterator it1;
      for (iter = this->fo.roots.begin(); iter != this->fo.roots.end(); ++iter) {
         root = iter->second;

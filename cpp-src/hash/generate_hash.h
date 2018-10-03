@@ -52,7 +52,7 @@ class generate_hash {
 	// A map of kmers to their hash values for newly added
 	// nodes. A hack until we have a dynamic hash function
 	// implementation
-	std::unordered_map<kmer_t, u_int64_t> new_nodes; 
+	std::map<kmer_t, u_int64_t> new_nodes; 
 
    boophf_t* bphf; //MPHF we will generate
 
@@ -244,7 +244,7 @@ class generate_hash {
 
 		if (!this->new_nodes.empty()) {
 
-			unordered_map<kmer_t, u_int64_t>::iterator found_kmer = this->new_nodes.find(kmer);
+			map<kmer_t, u_int64_t>::iterator found_kmer = this->new_nodes.find(kmer);
 
 			if (found_kmer != this->new_nodes.end()) {
 				return found_kmer->second;	
