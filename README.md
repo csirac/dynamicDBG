@@ -62,3 +62,9 @@ During execution, bds will print detailed logs to the screen. These logs indicat
 - Tree height tests are conducted on the forest
 - Edges are dynamically removed from the data structure, and then added back in;
   the forest is updated after each change.
+
+## Limitations
+
+The prime required to build the hash function must be at least n^2, where n is the number of nodes in the graph. In our implementation, the prime is stored in 64 bits. This means that n <= 3037000499 in order for the hash function to be constructed. To allow for greater values of n, BBHash would need to be modified. See the paper for more details.
+
+ 
